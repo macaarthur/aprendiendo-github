@@ -1,5 +1,9 @@
-import os
 import re
+from html import unescape
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+from flask import Flask, render_template, request
 
 
 PALABRAS_VACIAS = {
@@ -17,6 +21,49 @@ PALABRAS_VACIAS = {
 }
 
 
+def obtener_texto_desde_url(url):
+    solicitud = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
+    )
+
+    try:
+        with urlopen(solicitud, timeout=10) as respuesta:
+            tipo_contenido = respuesta.headers.get("Content-Type", "")
+            if "text/html" not in tipo_contenido:
+                return None, "La URL no contiene una pagina HTML valida."
+
+            html = respuesta.read().decode("utf-8", errors="ignore")
+    except HTTPError as error:
+        return None, f"No se pudo acceder a la pagina. Codigo HTTP: {error.code}"
+    except URLError:
+        return None, "No se pudo conectar con la URL indicada."
+    except Exception:
+        return None, "Ha ocurrido un error al descargar la pagina web."
+
+    texto = extraer_texto_html(html)
+    if not texto:
+        return None, "No se pudo extraer texto util de la pagina."
+
+    return texto, None
+
+
+def extraer_texto_html(html):
+    html = re.sub(r"<script.*?>.*?</script>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    html = re.sub(r"<style.*?>.*?</style>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    html = re.sub(r"<noscript.*?>.*?</noscript>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    html = re.sub(r"<[^>]+>", " ", html)
+    html = unescape(html)
+    html = re.sub(r"\s+", " ", html)
+
+    bloques = [bloque.strip() for bloque in re.split(r"(?<=[.!?])\s+", html) if bloque.strip()]
+    bloques_validos = [bloque for bloque in bloques if len(tokenizar(bloque)) >= 6]
+
+    return " ".join(bloques_validos[:20]).strip()
+
+
 def dividir_en_frases(texto):
     frases = re.split(r"(?<=[.!?])\s+", texto.strip())
     return [frase.strip() for frase in frases if frase.strip()]
@@ -26,88 +73,108 @@ def tokenizar(texto):
     return re.findall(r"\b\w+\b", texto.lower())
 
 
-def resumir_texto_local(texto):
-    texto = texto.strip()
-    if not texto:
-        return "- No hay texto para resumir\n- Introduce un texto más largo\n- Vuelve a intentarlo"
-
-    frases = dividir_en_frases(texto)
-
-    if not frases:
-        frases = [texto]
-
+def obtener_palabras_clave(texto, limite=6):
     frecuencias = {}
     for palabra in tokenizar(texto):
         if palabra not in PALABRAS_VACIAS and len(palabra) > 2:
             frecuencias[palabra] = frecuencias.get(palabra, 0) + 1
 
-    puntuaciones = []
-    for indice, frase in enumerate(frases):
-        palabras_frase = tokenizar(frase)
-        puntuacion = sum(
-            frecuencias.get(palabra, 0)
-            for palabra in palabras_frase
-            if palabra not in PALABRAS_VACIAS
+    palabras_ordenadas = sorted(
+        frecuencias.items(),
+        key=lambda item: (-item[1], item[0])
+    )
+    return [palabra for palabra, _ in palabras_ordenadas[:limite]]
+
+
+def puntuar_frase(frase, palabras_clave):
+    palabras_frase = tokenizar(frase)
+    if not palabras_frase:
+        return 0
+
+    coincidencias = sum(1 for palabra in palabras_frase if palabra in palabras_clave)
+    bonus_longitud = min(len(palabras_frase) / 12, 1)
+    return coincidencias + bonus_longitud
+
+
+def limpiar_frase(frase):
+    frase = frase.strip()
+    if not frase:
+        return ""
+    frase = frase[0].upper() + frase[1:]
+    if frase[-1] not in ".!?":
+        frase += "."
+    return frase
+
+
+def construir_resumen(frases_destacadas, palabras_clave):
+    frases_limpias = [limpiar_frase(frase) for frase in frases_destacadas if limpiar_frase(frase)]
+    if not frases_limpias:
+        return "No se pudo generar un resumen claro de la pagina."
+
+    temas = ", ".join(palabras_clave[:4]) if palabras_clave else "los puntos principales"
+
+    if len(frases_limpias) == 1:
+        return f"La pagina trata principalmente sobre {temas}. {frases_limpias[0]}"
+
+    if len(frases_limpias) == 2:
+        return (
+            f"La pagina destaca sobre todo {temas}. "
+            f"{frases_limpias[0]} {frases_limpias[1]}"
         )
-        if palabras_frase:
-            puntuacion /= len(palabras_frase)
-        puntuaciones.append((puntuacion, indice, frase))
 
-    mejores_frases = sorted(puntuaciones, reverse=True)[:3]
-    mejores_frases.sort(key=lambda item: item[1])
-
-    ideas = ["- " + frase for _, _, frase in mejores_frases]
-
-    while len(ideas) < 3:
-        ideas.append("- ")
-
-    return "\n".join(ideas)
-
-
-def resumir_texto_llm(texto):
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return None
-
-    try:
-        cliente = OpenAI(api_key=api_key)
-        respuesta = cliente.responses.create(
-            model="gpt-4.1-mini",
-            input=(
-                "Resume el siguiente texto en exactamente 3 ideas principales. "
-                "Devuelve solo 3 lineas y cada una debe empezar por '- '. "
-                "No anadas explicaciones adicionales.\n\n"
-                f"Texto:\n{texto.strip()}"
-            ),
-        )
-    except Exception:
-        return None
-
-    contenido = respuesta.output_text.strip()
-    lineas = [linea.strip() for linea in contenido.splitlines() if linea.strip()]
-
-    if len(lineas) != 3:
-        return None
-
-    if not all(linea.startswith("- ") for linea in lineas):
-        return None
-
-    return "\n".join(lineas)
+    return (
+        f"La pagina resume principalmente {temas}. "
+        f"{frases_limpias[0]} {frases_limpias[1]} {frases_limpias[2]}"
+    )
 
 
 def resumir_texto(texto):
-    resumen_llm = resumir_texto_llm(texto)
-    if resumen_llm:
-        return resumen_llm
-    return resumir_texto_local(texto)
+    texto = texto.strip()
+    if not texto:
+        return "No hay contenido suficiente para generar un resumen."
+
+    frases = dividir_en_frases(texto)
+    if not frases:
+        frases = [texto]
+
+    palabras_clave = obtener_palabras_clave(texto)
+    frases_puntuadas = []
+
+    for indice, frase in enumerate(frases):
+        puntuacion = puntuar_frase(frase, palabras_clave)
+        frases_puntuadas.append((puntuacion, indice, frase))
+
+    mejores_frases = sorted(frases_puntuadas, key=lambda item: (-item[0], item[1]))[:3]
+    mejores_frases.sort(key=lambda item: item[1])
+
+    frases_destacadas = [frase for _, _, frase in mejores_frases]
+    return construir_resumen(frases_destacadas, palabras_clave)
+
+
+def resumir_url(url):
+    texto, error = obtener_texto_desde_url(url)
+    if error:
+        return None, error
+    return resumir_texto(texto), None
+
+
+app = Flask(__name__)
+
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    url = ""
+    resumen = None
+    error = None
+
+    if request.method == "POST":
+        url = request.form.get("url", "").strip()
+        if not url:
+            error = "Introduce una URL valida."
+        else:
+            resumen, error = resumir_url(url)
+
+    return render_template("index.html", url=url, resumen=resumen, error=error)
 
 if __name__ == "__main__":
-    texto = input("Introduce un textoo: ")
-    resumen = resumir_texto(texto)
-    print("\nIdeas principales:")
-    print(resumen)
+    app.run(debug=True)

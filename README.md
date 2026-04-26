@@ -2,15 +2,23 @@
 
 Estoy aprendiendo GitHub y programación con IA.
 
-El script muestra tres ideas principales, una por línea y separadas por guiones.
+La aplicacion recibe la URL de una pagina web, extrae su texto principal y genera un resumen local con los puntos mas importantes, sin usar APIs externas.
 
-Opcionalmente, el script puede usar un LLM para generar un resumen mas semantico.
+El resumen intenta ser mas natural que un simple corte de texto:
 
-Para activarlo:
+1. Descarga el HTML de la pagina
+2. Elimina etiquetas y contenido no visible
+3. Detecta palabras clave relevantes
+4. Puntua las frases segun su relacion con esos temas
+5. Construye un resumen mas natural con las ideas principales de la pagina
 
-1. Instala la libreria: `pip install openai`
-2. Define la variable de entorno `OPENAI_API_KEY`
-3. Ejecuta el script normalmente
+## Interfaz web
 
-Si no hay API key o no esta instalada la libreria, el programa usa automaticamente el resumen local como respaldo.
+La aplicacion incluye un frontal sencillo con Flask para introducir una URL y ver el resumen en el navegador.
+
+Para ejecutarla:
+
+1. Instala Flask: `pip install flask`
+2. Ejecuta `python main.py`
+3. Abre `http://127.0.0.1:5000`
     
