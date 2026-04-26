@@ -42,6 +42,9 @@
                     <p class="result-label">Resumen generado</p>
                     <p class="result-url">{{ url }}</p>
                     <div class="result-body">{{ resumen }}</div>
+                    {% if not generado_por_llm %}
+                        <p class="result-note"><strong>Texto no generado por un LLM</strong></p>
+                    {% endif %}
                 </article>
             {% endif %}
         </section>

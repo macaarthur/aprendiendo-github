@@ -1,3 +1,4 @@
+import os
 import re
 from html import unescape
 from urllib.error import HTTPError, URLError
@@ -151,11 +152,48 @@ def resumir_texto(texto):
     return construir_resumen(frases_destacadas, palabras_clave)
 
 
+def resumir_texto_llm(texto):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None
+
+    try:
+        cliente = OpenAI(api_key=api_key)
+        respuesta = cliente.responses.create(
+            model="gpt-4.1-mini",
+            input=(
+                "Resume el contenido de esta pagina web en espanol de forma natural y breve. "
+                "Devuelve un unico parrafo con los puntos principales o ideas mas destacadas. "
+                "No uses listas ni encabezados.\n\n"
+                f"Contenido:\n{texto.strip()}"
+            ),
+        )
+    except Exception:
+        return None
+
+    contenido = respuesta.output_text.strip()
+    if not contenido:
+        return None
+
+    return contenido
+
+
 def resumir_url(url):
     texto, error = obtener_texto_desde_url(url)
     if error:
-        return None, error
-    return resumir_texto(texto), None
+        return None, error, False
+
+    resumen_llm = resumir_texto_llm(texto)
+    if resumen_llm:
+        return resumen_llm, None, True
+
+    resumen_local = resumir_texto(texto)
+    return resumen_local, None, False
 
 
 app = Flask(__name__)
@@ -166,15 +204,22 @@ def index():
     url = ""
     resumen = None
     error = None
+    generado_por_llm = False
 
     if request.method == "POST":
         url = request.form.get("url", "").strip()
         if not url:
             error = "Introduce una URL valida."
         else:
-            resumen, error = resumir_url(url)
+            resumen, error, generado_por_llm = resumir_url(url)
 
-    return render_template("index.html", url=url, resumen=resumen, error=error)
+    return render_template(
+        "index.html",
+        url=url,
+        resumen=resumen,
+        error=error,
+        generado_por_llm=generado_por_llm,
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

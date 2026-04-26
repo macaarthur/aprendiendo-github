@@ -2,7 +2,7 @@
 
 Estoy aprendiendo GitHub y programación con IA.
 
-La aplicacion recibe la URL de una pagina web, extrae su texto principal y genera un resumen local con los puntos mas importantes, sin usar APIs externas.
+La aplicacion recibe la URL de una pagina web, extrae su texto principal y trata de generar un resumen con un LLM. Si el proceso falla, usa automaticamente el resumen local actual.
 
 El resumen intenta ser mas natural que un simple corte de texto:
 
@@ -16,9 +16,13 @@ El resumen intenta ser mas natural que un simple corte de texto:
 
 La aplicacion incluye un frontal sencillo con Flask para introducir una URL y ver el resumen en el navegador.
 
+Si el resumen no puede generarse con el LLM por falta de API key, error de red o cualquier otro problema, la interfaz muestra el resumen local y anade la nota: **Texto no generado por un LLM**.
+
 Para ejecutarla:
 
 1. Instala Flask: `pip install flask`
-2. Ejecuta `python main.py`
-3. Abre `http://127.0.0.1:5000`
+2. Opcionalmente instala OpenAI: `pip install openai`
+3. Opcionalmente define `OPENAI_API_KEY`
+4. Ejecuta `python main.py`
+5. Abre `http://127.0.0.1:5000`
     
