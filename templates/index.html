@@ -20,16 +20,16 @@
         <section class="panel">
             <form method="post" class="summary-form">
                 <label for="url">URL de la pagina</label>
-                <div class="input-row">
-                    <input
-                        id="url"
-                        name="url"
-                        type="url"
-                        placeholder="https://ejemplo.com/articulo"
-                        value="{{ url }}"
-                        required
-                    >
-                    <button type="submit">Resumir</button>
+                <textarea
+                    id="url"
+                    name="url"
+                    rows="5"
+                    placeholder="Pega aqui la URL de la pagina que quieres resumir&#10;&#10;Ejemplo: https://ejemplo.com/articulo"
+                    required
+                >{{ url }}</textarea>
+                <div class="actions-row">
+                    <p class="helper-text">La aplicacion extrae el contenido visible de la pagina y genera un resumen con los puntos mas relevantes.</p>
+                    <button type="submit">Generar resumen</button>
                 </div>
             </form>
 
@@ -39,8 +39,10 @@
 
             {% if resumen %}
                 <article class="result">
-                    <p class="result-label">Resumen generado</p>
-                    <p class="result-url">{{ url }}</p>
+                    <div class="result-header">
+                        <p class="result-label">Resumen generado</p>
+                        <p class="result-url">{{ url }}</p>
+                    </div>
                     <div class="result-body">{{ resumen }}</div>
                     {% if not generado_por_llm %}
                         <p class="result-note"><strong>Texto no generado por un LLM</strong></p>
